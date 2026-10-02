@@ -30,6 +30,20 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/refill", response_model=PageResult[dict])
+def refill_entries() -> PageResult[dict]:
+    """需补油清单：与油料记录取同一份存量，完成补油的记录不再出现。"""
+    items = service.refill_list()
+    return PageResult(items=items, total=len(items), page=1, size=len(items) or 1)
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出油料管理清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "fuel", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条油料记录明细；不存在时给出可读的错误说明。"""
@@ -50,16 +64,10 @@ def create_entry(payload: EntryPayload) -> ActionResult:
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
-    """对单条油料记录执行记录消耗、申请补油、完成补油；不允许的动作会被拦下并说明原因。"""
-    action = str(payload.values.get("action") or "").strip()
-    entry, message = service.run_action(entry_id, action)
+    """对单条油料记录执行记录消耗、申请补油、完成补油、调整调入量；不允许的动作会被拦下并说明原因。"""
+    values = dict(payload.values)
+    action = str(values.pop("action", "") or "").strip()
+    entry, message = service.run_action(entry_id, action, values)
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出油料管理清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "fuel", "total": total, "items": items}
